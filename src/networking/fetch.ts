@@ -1,26 +1,26 @@
-import nodeFetch, { RequestInit } from 'node-fetch';
-import type { Readable } from 'stream';
+import nodeFetch, { RequestInit } from "node-fetch";
+import type { Readable } from "stream";
 
-import { BoxApiError, BoxSdkError } from '../box/errors';
+import { BoxApiError, BoxSdkError } from "../box/errors";
 import {
   ByteStream,
   CancellationToken,
   generateByteStreamFromBuffer,
   isBrowser,
   readByteStream,
-} from '../internal/utils';
-import { sdkVersion } from './version';
+} from "../internal/utils";
+import { sdkVersion } from "./version";
 import {
   SerializedData,
   jsonToSerializedData,
   sdIsMap,
   sdToJson,
   sdToUrlParams,
-} from '../serialization/json';
-import { Authentication } from './auth.generated';
-import { getRetryTimeout } from './getRetryTimeout';
-import { Interceptor } from './interceptors.generated';
-import { NetworkSession } from './network.generated';
+} from "../serialization/json";
+import { Authentication } from "./auth.generated";
+import { getRetryTimeout } from "./getRetryTimeout";
+import { Interceptor } from "./interceptors.generated";
+import { NetworkSession } from "./network.generated";
 
 export const userAgentHeader = `Box JavaScript generated SDK v${sdkVersion} (${
   isBrowser() ? navigator.userAgent : `Node ${process.version}`
@@ -121,9 +121,9 @@ export interface FetchResponse {
 
 async function createRequestInit(options: FetchOptions): Promise<RequestInit> {
   const {
-    method = 'GET',
+    method = "GET",
     headers = {},
-    contentType: contentTypeInput = 'application/json',
+    contentType: contentTypeInput = "application/json",
     data,
     fileStream,
   } = options;
@@ -133,24 +133,22 @@ async function createRequestInit(options: FetchOptions): Promise<RequestInit> {
     body: Readable | string;
   }> => {
     if (options.multipartData) {
-      const FormData = isBrowser()
-        ? window.FormData
-        : eval('require')('form-data');
+      const FormData = isBrowser() ? window.FormData : require("form-data");
       const formData = new FormData();
       for (const item of options.multipartData) {
         if (item.fileStream) {
           const buffer = await readByteStream(item.fileStream);
           const blob = isBrowser() ? new Blob([buffer]) : buffer;
-          headers['content-md5'] = await calculateMD5Hash(buffer);
+          headers["content-md5"] = await calculateMD5Hash(buffer);
           formData.append(item.partName, blob, {
-            filename: item.fileName ?? 'file',
-            contentType: item.contentType ?? 'application/octet-stream',
+            filename: item.fileName ?? "file",
+            contentType: item.contentType ?? "application/octet-stream",
           });
         } else if (item.data) {
           formData.append(item.partName, sdToJson(item.data));
         } else {
           throw new BoxSdkError({
-            message: 'Multipart item must have either body or fileStream',
+            message: "Multipart item must have either body or fileStream",
           });
         }
       }
@@ -165,18 +163,18 @@ async function createRequestInit(options: FetchOptions): Promise<RequestInit> {
 
     const contentType = contentTypeInput;
     switch (contentType) {
-      case 'application/json':
-      case 'application/json-patch+json':
+      case "application/json":
+      case "application/json-patch+json":
         return { contentType, body: sdToJson(data) };
 
-      case 'application/x-www-form-urlencoded':
+      case "application/x-www-form-urlencoded":
         return { contentType, body: sdToUrlParams(data) };
 
-      case 'application/octet-stream':
+      case "application/octet-stream":
         if (!fileStream) {
           throw new BoxSdkError({
             message:
-              'fileStream required for application/octet-stream content type',
+              "fileStream required for application/octet-stream content type",
           });
         }
         return { contentType, body: fileStream };
@@ -191,20 +189,20 @@ async function createRequestInit(options: FetchOptions): Promise<RequestInit> {
   return {
     method,
     headers: {
-      ...(contentType && { 'Content-Type': contentType }),
+      ...(contentType && { "Content-Type": contentType }),
       ...headers,
       ...(options.auth && {
         Authorization: await options.auth.retrieveAuthorizationHeader(
           options.networkSession
         ),
       }),
-      'User-Agent': userAgentHeader,
-      'X-Box-UA': xBoxUaHeader,
+      "User-Agent": userAgentHeader,
+      "X-Box-UA": xBoxUaHeader,
       // Additional headers will override the default headers
       ...options.networkSession?.additionalHeaders,
     },
     body,
-    signal: options.cancellationToken as RequestInit['signal'],
+    signal: options.cancellationToken as RequestInit["signal"],
     agent: options.networkSession?.agent,
   };
 }
@@ -241,21 +239,21 @@ export async function fetch(
 
   const { params = {} } = fetchOptions;
   const response = await nodeFetch(
-    ''.concat(
+    "".concat(
       fetchOptions.url,
-      Object.keys(params).length === 0 || fetchOptions.url.endsWith('?')
-        ? ''
-        : '?',
+      Object.keys(params).length === 0 || fetchOptions.url.endsWith("?")
+        ? ""
+        : "?",
       new URLSearchParams(params).toString()
     ),
-    { ...requestInit, redirect: 'manual' }
+    { ...requestInit, redirect: "manual" }
   );
 
-  const contentType = response.headers.get('content-type') ?? '';
+  const contentType = response.headers.get("content-type") ?? "";
   const responseBytesBuffer = await response.arrayBuffer();
 
   const data = ((): SerializedData => {
-    if (contentType.includes('application/json')) {
+    if (contentType.includes("application/json")) {
       const text = new TextDecoder().decode(responseBytesBuffer);
       return jsonToSerializedData(text);
     }
@@ -279,20 +277,20 @@ export async function fetch(
   }
 
   if (fetchResponse.status >= 300 && fetchResponse.status < 400) {
-    if (!fetchResponse.headers['location']) {
+    if (!fetchResponse.headers["location"]) {
       throw new BoxSdkError({
         message: `Unable to follow redirect for ${fetchOptions.url}`,
       });
     }
     return fetch({
       ...options,
-      url: fetchResponse.headers['location'],
+      url: fetchResponse.headers["location"],
     });
   }
 
   const acceptedWithRetryAfter =
     fetchResponse.status === STATUS_CODE_ACCEPTED &&
-    fetchResponse.headers['retry-after'];
+    fetchResponse.headers["retry-after"];
   if (fetchResponse.status >= 400 || acceptedWithRetryAfter) {
     const { numRetries = 0 } = fetchOptions;
 
@@ -312,14 +310,14 @@ export async function fetch(
     }
 
     const isRetryable =
-      fetchOptions.contentType !== 'application/x-www-form-urlencoded' &&
+      fetchOptions.contentType !== "application/x-www-form-urlencoded" &&
       (fetchResponse.status === STATUS_CODE_TOO_MANY_REQUESTS ||
         acceptedWithRetryAfter ||
         fetchResponse.status >= 500);
 
     if (isRetryable && numRetries < DEFAULT_MAX_ATTEMPTS) {
-      const retryTimeout = fetchResponse.headers['retry-after']
-        ? parseFloat(fetchResponse.headers['retry-after']!) * 1000
+      const retryTimeout = fetchResponse.headers["retry-after"]
+        ? parseFloat(fetchResponse.headers["retry-after"]!) * 1000
         : getRetryTimeout(numRetries, RETRY_BASE_INTERVAL * 1000);
 
       await new Promise((resolve) => setTimeout(resolve, retryTimeout));
@@ -328,12 +326,12 @@ export async function fetch(
 
     const [code, contextInfo, requestId, helpUrl] = sdIsMap(fetchResponse.data)
       ? [
-          sdToJson(fetchResponse.data['code']),
-          sdIsMap(fetchResponse.data['context_info'])
-            ? fetchResponse.data['context_info']
+          sdToJson(fetchResponse.data["code"]),
+          sdIsMap(fetchResponse.data["context_info"])
+            ? fetchResponse.data["context_info"]
             : undefined,
-          sdToJson(fetchResponse.data['request_id']),
-          sdToJson(fetchResponse.data['help_url']),
+          sdToJson(fetchResponse.data["request_id"]),
+          sdToJson(fetchResponse.data["help_url"]),
         ]
       : [];
 
@@ -346,7 +344,7 @@ export async function fetch(
         queryParams: params,
         headers: (requestInit.headers as { [key: string]: string }) ?? {},
         body:
-          typeof requestInit.body === 'string' ? requestInit.body : undefined,
+          typeof requestInit.body === "string" ? requestInit.body : undefined,
       },
       responseInfo: {
         statusCode: fetchResponse.status,
@@ -358,7 +356,7 @@ export async function fetch(
         requestId: requestId,
         helpUrl: helpUrl,
       },
-      name: 'BoxApiError',
+      name: "BoxApiError",
     });
   }
 
@@ -373,18 +371,18 @@ async function calculateMD5Hash(data: string | Buffer): Promise<string> {
   // Browser environment
   if (isBrowser()) {
     let dataBuffer =
-      typeof data === 'string' ? new TextEncoder().encode(data) : data;
-    let hashBuffer = await window.crypto.subtle.digest('SHA-1', dataBuffer);
+      typeof data === "string" ? new TextEncoder().encode(data) : data;
+    let hashBuffer = await window.crypto.subtle.digest("SHA-1", dataBuffer);
     let hashArray = Array.from(new Uint8Array(hashBuffer));
     let hashHex = hashArray
-      .map((b) => b.toString(16).padStart(2, '0'))
-      .join('');
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
     return hashHex;
   }
 
   // Node environment
-  createHash = eval('require')('crypto').createHash;
-  return createHash('sha1').update(data).digest('hex');
+  createHash = require("crypto").createHash;
+  return createHash("sha1").update(data).digest("hex");
 }
 
 function constructBoxUAHeader() {
@@ -392,10 +390,10 @@ function constructBoxUAHeader() {
     agent: `box-javascript-generated-sdk/${sdkVersion}`,
     env: isBrowser()
       ? navigator.userAgent
-      : `Node/${process.version.replace('v', '')}`,
+      : `Node/${process.version.replace("v", "")}`,
   } as Record<string, string>;
 
   return Object.keys(analyticsIdentifiers)
     .map((k) => `${k}=${analyticsIdentifiers[k]}`)
-    .join('; ');
+    .join("; ");
 }
